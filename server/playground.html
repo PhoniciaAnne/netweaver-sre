@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netweaver SRE - Aerospace Command</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.6);
+            --panel-border: rgba(148, 163, 184, 0.15);
+            --brand-color: #38bdf8;
+            --accent-green: #34d399;
+            --accent-red: #f43f5e;
+            --accent-orange: #fbbf24;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            --blur-glass: blur(16px);
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(52, 211, 153, 0.05) 0%, transparent 50%);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Glassmorphism Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2.5rem;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: var(--blur-glass);
+            border-bottom: 1px solid var(--panel-border);
+            z-index: 10;
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: var(--brand-color);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .status-beacon {
+            width: 12px; height: 12px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: breathe 3s infinite ease-in-out;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.1); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        select, .btn {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        select:hover, .btn:hover { border-color: var(--brand-color); }
+        
+        .btn.primary {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: var(--brand-color);
+            color: var(--brand-color);
+        }
+        .btn.primary:hover {
+            background: var(--brand-color);
+            color: var(--bg-base);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
+
+        /* Main Workspace Layout */
+        .workspace {
+            display: grid;
+            grid-template-columns: 350px 1fr 380px;
+            gap: 1.5rem;
+            padding: 1.5rem 2.5rem;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            backdrop-filter: var(--blur-glass);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow-glass);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid var(--panel-border);
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.1);
+        }
+
+        /* Mission Protocol (Sidebar) */
+        .mission-protocol {
+            padding: 1.5rem;
+            overflow-y: auto;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+        .mission-title { color: var(--brand-color); font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem;}
+        .instruction-step {
+            margin-bottom: 1rem;
+            padding-left: 1rem;
+            border-left: 2px solid var(--panel-border);
+            transition: border-color 0.3s;
+        }
+        .instruction-step:hover { border-color: var(--brand-color); }
+        .instruction-step strong { color: var(--text-main); }
+        .SOP-badge {
+            display: inline-block;
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--accent-red);
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-weight: 800;
+            font-size: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Center Column: Terminal & Action */
+        .center-col {
+            display: grid;
+            grid-template-rows: 1fr auto;
+            gap: 1.5rem;
+            overflow: hidden;
+        }
+
+        .terminal {
+            background: rgba(0,0,0,0.4);
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1.5rem;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            height: 100%;
+        }
+
+        .log-entry { display: flex; gap: 1rem; }
+        .log-time { color: var(--text-muted); min-width: 70px; }
+        .log-msg { color: var(--text-main); }
+        .log-msg.success { color: var(--accent-green); }
+        .log-msg.error { color: var(--accent-red); }
+        .log-msg.warn { color: var(--accent-orange); }
+
+        .action-bay {
+            padding: 1.5rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 1rem;
+            align-items: end;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .input-group label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        input {
+            background: var(--bg-base);
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        input:focus { outline: none; border-color: var(--brand-color); }
+
+        /* Right Column: Telemetry & Evaluation */
+        .telemetry-grid {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .telemetry-card {
+            background: rgba(0,0,0,0.15);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 1.2rem;
+        }
+
+        .tc-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.8rem;
+        }
+
+        .q-bar-bg {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .q-bar-fill {
+            height: 100%;
+            background: var(--brand-color);
+            transition: width 0.4s ease, background-color 0.4s;
+        }
+
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+        .matrix-cell {
+            height: 20px;
+            border-radius: 3px;
+            background: rgba(56, 189, 248, 0.1);
+            transition: background-color 0.3s;
+        }
+
+        /* Grading and Progress */
+        .eval-panel {
+            margin-top: auto;
+            border-top: 1px solid var(--panel-border);
+            padding: 1.5rem;
+            background: rgba(52, 211, 153, 0.05);
+        }
+
+        .score-display {
+            font-size: 3.5rem;
+            font-weight: 800;
+            color: var(--accent-green);
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            text-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
+        }
+
+        .grade-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+        .meta-val { font-weight: 700; color: var(--text-main); }
+        .meta-val.bonus { color: var(--brand-color); }
+        .meta-val.penalty { color: var(--accent-red); }
+
+        /* Flashing animation for incremental progress */
+        @keyframes rewardFlash {
+            0% { background: rgba(52, 211, 153, 0.3); }
+            100% { background: rgba(52, 211, 153, 0.05); }
+        }
+        .eval-panel.flash { animation: rewardFlash 0.8s ease-out; }
+
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <div class="status-beacon"></div>
+            NETWEAVER_SRE
+        </div>
+        <div class="controls">
+            <select id="levelSelect">
+                <option value="easy">Simulate: EASY FAULT</option>
+                <option value="medium">Simulate: MEDIUM FAULT</option>
+                <option value="hard" selected>Simulate: HARD FAULT</option>
+            </select>
+            <button class="btn primary" onclick="resetEnv()">INITIALIZE CLUSTER</button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        
+        <!-- Left: How to Play / SOP -->
+        <div class="panel">
+            <div class="panel-header">SRE Mission Control</div>
+            <div class="mission-protocol" id="missionProtocol">
+                <!-- Dynamically populated based on level -->
+                Loading Protocols...
+            </div>
+        </div>
+
+        <!-- Center: Terminal & Actions -->
+        <div class="center-col">
+            <div class="panel terminal-panel" style="height: 100%;">
+                <div class="panel-header">System Event Stream</div>
+                <div class="terminal" id="logsBox">
+                    <!-- Logs go here -->
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header" style="border-bottom:none; padding-bottom:0;">Command Injection Module</div>
+                <div class="action-bay">
+                    <div class="input-group">
+                        <label>SRE Command Line</label>
+                        <select id="actionCmd" style="width:100%;">
+                            <option value="DRAIN_TRAFFIC">DRAIN_TRAFFIC</option>
+                            <option value="TUNE_PFC_THRESHOLD">TUNE_PFC_THRESHOLD</option>
+                            <option value="RUN_MINI_ITERATION">RUN_MINI_ITERATION</option>
+                        </select>
+                    </div>
+                    <div class="input-group" style="flex-direction:row; justify-content:space-between;">
+                        <div style="flex:2;">
+                            <label>Target ID</label>
+                            <input type="text" id="actionTarget" placeholder="e.g. node_12">
+                        </div>
+                        <div style="flex:1;">
+                            <label>Value</label>
+                            <input type="number" id="actionValue" placeholder="Int">
+                        </div>
+                    </div>
+                    <button class="btn primary" style="height:42px;" onclick="sendAction()">EXECUTE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Telemetry & Evaluation -->
+        <div class="panel">
+            <div class="panel-header">Live Telemetry</div>
+            <div class="telemetry-grid">
+                
+                <div class="telemetry-card">
+                    <div class="tc-header"><span>Switch Buffers (Spine 1)</span><span id="spineVal">0%</span></div>
+                    <div class="q-bar-bg"><div class="q-bar-fill" id="spine1Bar"></div></div>
+                </div>
+
+                <div class="telemetry-card">
+                    <div class="tc-header"><span>Gradient Variance Matrix</span><span>SDC RADAR</span></div>
+                    <div class="matrix-grid" id="gMatrix">
+                        <!-- cells injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="eval-panel" id="evalPanel">
+                <div class="tc-header"><span>Evaluation Grade</span><span id="evalStatus" style="color:var(--text-main);">STANDBY</span></div>
+                <div class="score-display" id="totalScore">0.00</div>
+                <div class="grade-meta">
+                    <span>Bonuses: <span class="meta-val bonus" id="metaBonus">0</span></span>
+                    <span>Penalties: <span class="meta-val penalty" id="metaPenalty">0</span></span>
+                    <span>Step: <span class="meta-val" id="metaStep">0</span></span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const logsBox = document.getElementById('logsBox');
+        let currentScore = 0.0;
+        let stepCount = 0;
+
+        function updateSOP(level) {
+            const protocol = document.getElementById('missionProtocol');
+            let content = '';
+            
+            if(level === 'easy') {
+                content = `
+                    <div class="SOP-badge">INCIDENT: HARD STOP</div>
+                    <div class="mission-title">Node Heartbeat Failure</div>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem;">A node has entirely dropped off the network. Find its ID in the logs and route traffic away.</p>
+                    <div class="instruction-step">
+                        <strong>Step 1:</strong> Read the System Event Stream carefully for the 'CRITICAL' line containing the dead node's exact ID (e.g., node_45).
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 2:</strong> Select Command: <code>DRAIN_TRAFFIC</code>
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 3:</strong> Enter the precise Target ID in the input box.
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 4:</strong> Click Execute to isolate the component and restore SLA.
+                    </div>
+                `;
+            } else if (level === 'medium') {
+                content = `
+                    <div class="SOP-badge">INCIDENT: CONGESTION</div>
+                    <div class="mission-title">PFC Buffer Overflow</div>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem;">Heavy network load is causing packets to drop on 'spine_1'. You must tune the Priority Flow Control (PFC) threshold.</p>
+                    <div class="instruction-step">
+                        <strong>Step 1:</strong> Locate the optimal PFC threshold hint provided in the WARNING logs.
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 2:</strong> Command: <code>TUNE_PFC_THRESHOLD</code>
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 3:</strong> Provide the threshold as an Integer in the <code>Value</code> input.
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Tip:</strong> The closer you get to the target threshold, the higher your incremental reward! Watch the telemetry stabilize.
+                    </div>
+                `;
+            } else if (level === 'hard') {
+                content = `
+                    <div class="SOP-badge">INCIDENT: SILENT DATA CORRUPTION</div>
+                    <div class="mission-title">NaN Contagion Triage</div>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem;">A faulty GPU is injecting NaN (Not a Number) into the global gradient ring. You must isolate it using binary triage.</p>
+                    <div class="instruction-step">
+                        <strong>Step 1:</strong> Observe the <code>Gradient Variance Matrix</code> (bottom right). Finding the sub-cluster index (0-15) that is glowing RED.
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 2:</strong> Command: <code>RUN_MINI_ITERATION</code><br>Target: <code>"Start-End"</code> (e.g. "0-7").<br><span style="color:var(--brand-color);font-size:0.8rem;">Reward Bonus: Narrowing the search range successfully gives incremental points.</span>
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 3:</strong> Once you pinpoint the exact index (e.g. Target: "5-5"), the logs will reveal the exact Node ID.
+                    </div>
+                    <div class="instruction-step">
+                        <strong>Step 4:</strong> Execute <code>DRAIN_TRAFFIC</code> on the revealed Node ID to finish the incident.
+                    </div>
+                `;
+            }
+            protocol.innerHTML = content;
+        }
+
+        function appendLog(msg) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const now = new Date();
+            const ts = \`\${now.getHours().toString().padStart(2,'0')}:\${now.getMinutes().toString().padStart(2,'0')}:\${now.getSeconds().toString().padStart(2,'0')}\`;
+            
+            let messageClass = 'info';
+            if (msg.includes('SUCCESS') || msg.includes('TRIAGE_HIT')) messageClass = 'success';
+            else if (msg.includes('ERROR') || msg.includes('CRITICAL') || msg.includes('INVALID')) messageClass = 'error';
+            else if (msg.includes('ALERT') || msg.includes('WARN')) messageClass = 'warn';
+
+            entry.innerHTML = \`<div class="log-time">[\${ts}]</div><div class="log-msg \${messageClass}">\${msg}</div>\`;
+            logsBox.appendChild(entry);
+            logsBox.scrollTop = logsBox.scrollHeight;
+        }
+
+        async function resetEnv() {
+            const level = document.getElementById('levelSelect').value;
+            logsBox.innerHTML = '';
+            stepCount = 0;
+            currentScore = 0.0;
+            updateSOP(level);
+            appendLog(\`SYSTEM: Provisioning new \${level.toUpperCase()} incident response environment...\`);
+            
+            try {
+                await fetch('/set_level', { 
+                    method: 'POST', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body: JSON.stringify({task_level: level}) 
+                });
+                const res = await fetch('/reset', { method: 'POST' });
+                const data = await res.json();
+                updateUI(data);
+            } catch (e) {
+                appendLog(\`CRITICAL: Failed to reach backend. \${e.message}\`);
+            }
+        }
+
+        async function sendAction() {
+            const cmd = document.getElementById('actionCmd').value;
+            const tgt = document.getElementById('actionTarget').value;
+            const val = document.getElementById('actionValue').value;
+            
+            const action = { command: cmd, target: tgt };
+            if (val) action.value = parseInt(val);
+
+            appendLog(\`> \${cmd} --target=\${tgt || 'None'} \${val ? '--value='+val : ''}\`);
+            
+            try {
+                const res = await fetch('/step', { 
+                    method: 'POST', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body: JSON.stringify({action: action}) 
+                });
+                const data = await res.json();
+                stepCount++;
+                updateUI(data);
+            } catch (e) {
+                appendLog(\`API_FAIL: \${e.message}\`);
+            }
+        }
+
+        function updateUI(resData) {
+            const obs = resData.observation || {};
+            
+            // Render Logs
+            if (obs.hardware_logs) {
+                obs.hardware_logs.forEach(msg => appendLog(msg));
+            }
+
+            // Render Queue Depths
+            if (obs.queue_depths && obs.queue_depths.spine_1 !== undefined) {
+                const s1 = obs.queue_depths.spine_1;
+                document.getElementById('spineVal').innerText = \`\${s1.toFixed(1)}%\`;
+                const bar = document.getElementById('spine1Bar');
+                bar.style.width = \`\${Math.min(100, s1)}%\`;
+                bar.style.backgroundColor = s1 > 80 ? 'var(--accent-red)' : (s1 > 40 ? 'var(--accent-orange)' : 'var(--brand-color)');
+            }
+
+            // Render Matrix
+            const gMatrix = document.getElementById('gMatrix');
+            if (obs.gradient_variances) {
+                gMatrix.innerHTML = '';
+                obs.gradient_variances.forEach((v, i) => {
+                    const block = document.createElement('div');
+                    block.className = 'matrix-cell';
+                    if (v > 100) {
+                        block.style.background = 'var(--accent-red)';
+                        block.style.boxShadow = '0 0 10px var(--accent-red)';
+                    } else if (v > 10) {
+                        block.style.background = 'var(--accent-orange)';
+                    }
+                    block.title = \`Idx \${i}: \${v.toFixed(3)}\`;
+                    gMatrix.appendChild(block);
+                });
+            }
+
+            // Render Grading and Rewards
+            const grading = obs.grading_info || {};
+            const newScore = grading.score !== undefined ? grading.score : (resData.reward || 0);
+
+            // Flash Eval panel if score goes up (Meaningful Incremental Reward)
+            if (newScore > currentScore) {
+                const panel = document.getElementById('evalPanel');
+                panel.classList.remove('flash');
+                void panel.offsetWidth; // trigger reflow
+                panel.classList.add('flash');
+            }
+            currentScore = newScore;
+            
+            document.getElementById('totalScore').innerText = currentScore.toFixed(2);
+            document.getElementById('metaBonus').innerText = grading.bonuses || 0;
+            document.getElementById('metaPenalty').innerText = grading.penalties || 0;
+            document.getElementById('metaStep').innerText = stepCount;
+            document.getElementById('evalStatus').innerText = (grading.status || 'ACTIVE').toUpperCase();
+            
+            if (resData.done) {
+                const isWin = grading.status === 'success';
+                document.getElementById('totalScore').style.color = isWin ? 'var(--accent-green)' : 'var(--accent-red)';
+                appendLog(\`EVALUATION COMPLETE. Final Grade: \${currentScore.toFixed(2)} ([Bonuses: \${grading.bonuses || 0}] [Penalties: \${grading.penalties || 0}])\`);
+            } else {
+                 document.getElementById('totalScore').style.color = 'var(--brand-color)';
+            }
+        }
+
+        window.onload = resetEnv;
+    </script>
+</body>
+</html>

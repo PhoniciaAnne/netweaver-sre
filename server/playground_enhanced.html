@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NetWeaver SRE Pro — Advanced Autonomous Incident Triage</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg: #020810;
+    --bg2: #040d1a;
+    --panel: #060f1e;
+    --border: #0d2440;
+    --border2: #1a3a5c;
+    --cyan: #00d4ff;
+    --cyan2: #00ffcc;
+    --green: #00ff88;
+    --red: #ff3366;
+    --amber: #ffaa00;
+    --purple: #8844ff;
+    --text: #b0cce8;
+    --text-dim: #4a6a8a;
+    --glow-c: rgba(0,212,255,0.15);
+    --glow-g: rgba(0,255,136,0.12);
+    --glow-r: rgba(255,51,102,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9998;
+    opacity: 0.4;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border2);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.1rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    color: var(--cyan);
+    text-shadow: 0 0 16px var(--cyan);
+  }
+  .topbar-logo span { color: var(--green); text-shadow: 0 0 12px var(--green); }
+  .topbar-center {
+    display: flex; gap: 24px; align-items: center;
+  }
+  .connection-status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+  }
+  .conn-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 8px var(--green);
+    animation: pulse 1s infinite;
+  }
+  .conn-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .topbar-right {
+    display: flex; gap: 16px; align-items: center;
+  }
+  .btn-tab {
+    padding: 6px 14px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 1px;
+  }
+  .btn-tab:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn-tab.active { background: rgba(0,212,255,0.12); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px rgba(0,212,255,0.2); }
+  .topbar-clock { font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--text-dim); }
+
+  /* ── Modal ── */
+  .modal { display: none; position: fixed; inset: 0; background: rgba(2,8,16,0.95); z-index: 9000;
+    align-items: center; justify-content: center; backdrop-filter: blur(4px); animation: fadeIn 0.2s; }
+  .modal.open { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-box { background: var(--bg2); border: 1px solid var(--border2); border-top: 2px solid var(--cyan);
+    width: 90vw; max-width: 900px; max-height: 90vh; overflow-y: auto; padding: 36px;
+    box-shadow: 0 0 60px rgba(0,212,255,0.12), 0 0 120px rgba(0,0,0,0.8); animation: slideUp 0.25s; }
+  @keyframes slideUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .modal-close { position: absolute; top: 16px; right: 20px; font-size: 0.75rem;
+    color: var(--text-dim); cursor: pointer; padding: 4px 10px; }
+  .modal-close:hover { color: var(--red); }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 52px);
+  }
+
+  @media (min-width: 1400px) {
+    .layout { grid-template-columns: 280px 1fr 320px; }
+    .left-panel { grid-row: 1; grid-column: 1; }
+    .center-panel { grid-row: 1; grid-column: 2; }
+    .right-panel { grid-row: 1; grid-column: 3; }
+  }
+
+  @media (max-width: 1399px) {
+    .layout { grid-template-columns: 1fr; }
+    .left-panel { display: none; }
+    .right-panel { display: none; }
+    .center-panel { grid-column: 1; }
+  }
+
+  /* ── Panels ── */
+  .panel { background: var(--panel); padding: 18px 20px; border: 1px solid var(--border); }
+  .panel-title { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim);
+    margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .panel-title::before { content: ''; width: 6px; height: 6px; background: var(--cyan);
+    box-shadow: 0 0 6px var(--cyan); animation: pulse 2s infinite; }
+
+  /* ── Task cards ── */
+  .task-card { padding: 14px; border: 1px solid var(--border); border-radius: 2px;
+    margin-bottom: 10px; cursor: pointer; transition: all 0.2s; position: relative; }
+  .task-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .task-card.easy::before { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .task-card.medium::before { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .task-card.hard::before { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .task-card:hover { border-color: var(--border2); background: rgba(13,36,64,0.6); }
+  .task-card.active { border-color: var(--cyan); background: rgba(0,212,255,0.04); box-shadow: 0 0 8px rgba(0,212,255,0.15); }
+  .task-level { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem;
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+  .task-card.easy .task-level { color: var(--green); }
+  .task-card.medium .task-level { color: var(--amber); }
+  .task-card.hard .task-level { color: var(--red); }
+  .task-name { font-weight: 700; font-size: 0.95rem; color: #e0f0ff; margin-bottom: 4px; }
+  .task-desc { font-size: 0.78rem; color: var(--text-dim); line-height: 1.4; }
+  .task-score { display: flex; justify-content: space-between; margin-top: 10px;
+    padding-top: 8px; border-top: 1px solid var(--border); }
+
+  /* ── Topology ── */
+  .node-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(25px, 1fr));
+    gap: 4px; margin-top: 8px; }
+  .node-cell { aspect-ratio: 1; border: 1px solid var(--border); border-radius: 1px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.45rem;
+    color: var(--text-dim); cursor: pointer; transition: all 0.3s; }
+  .node-cell:hover { filter: brightness(1.2); }
+  .node-cell.online { border-color: rgba(0,255,136,0.3); background: rgba(0,255,136,0.05); color: var(--green); }
+  .node-cell.offline { border-color: var(--red); background: rgba(255,51,102,0.1);
+    color: var(--red); animation: node-blink 0.6s step-end infinite; }
+  .node-cell.suspect { border-color: var(--amber); background: rgba(255,170,0,0.08); color: var(--amber); }
+  .node-cell.drain { border-color: var(--cyan); background: rgba(0,212,255,0.08); color: var(--cyan); }
+  @keyframes node-blink { 50% { opacity: 0.3; } }
+
+  /* ── Variance ── */
+  .variance-bars { display: flex; gap: 3px; align-items: flex-end; height: 90px; margin-top: 8px; }
+  .v-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .v-bar { width: 100%; border-radius: 1px 1px 0 0; transition: all 0.4s;
+    position: relative; background: linear-gradient(to top, var(--green), rgba(0,255,136,0.3)); }
+  .v-bar.spike { background: linear-gradient(to top, var(--red), var(--amber));
+    box-shadow: 0 0 12px var(--red); animation: spike-pulse 0.5s infinite alternate; }
+  @keyframes spike-pulse { from { opacity: 0.7; } to { opacity: 1; } }
+  .v-label { font-family: 'Share Tech Mono', monospace; font-size: 0.5rem; color: var(--text-dim); }
+
+  /* ── Logs ── */
+  .log-feed { height: 140px; overflow-y: auto; font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem; line-height: 1.6; }
+  .log-entry { padding: 2px 0; display: flex; gap: 8px; animation: log-in 0.3s ease; }
+  @keyframes log-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; } }
+  .log-entry .ts { color: var(--text-dim); flex-shrink: 0; }
+  .log-entry.info .msg { color: var(--text); }
+  .log-entry.warn .msg { color: var(--amber); }
+  .log-entry.error .msg { color: var(--red); }
+  .log-entry.ok .msg { color: var(--green); }
+
+  /* ── Action panel ── */
+  .action-form { display: flex; flex-direction: column; gap: 8px; }
+  .action-row { display: flex; gap: 8px; }
+  select, input { flex: 1; background: #020810; border: 1px solid var(--border2);
+    color: var(--text); padding: 7px 10px; font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem; outline: none; border-radius: 1px; transition: border-color 0.2s; }
+  select:focus, input:focus { border-color: var(--cyan); }
+  .btn { padding: 8px 16px; font-family: 'Orbitron', monospace; font-size: 0.65rem;
+    font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; border: none; border-radius: 1px; transition: all 0.2s; }
+  .btn-transmit { background: var(--cyan); color: #020810;
+    box-shadow: 0 0 16px rgba(0,212,255,0.3); }
+  .btn-transmit:hover { background: var(--cyan2); box-shadow: 0 0 24px rgba(0,212,255,0.5); }
+  .btn-reset { background: transparent; color: var(--text-dim); border: 1px solid var(--border2); }
+  .btn-reset:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* ── Reward display ── */
+  .reward-display { display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px; padding: 20px 0; }
+  .reward-big { font-family: 'Orbitron', monospace; font-size: 2.8rem; font-weight: 900;
+    color: var(--green); text-shadow: 0 0 30px var(--green); transition: all 0.5s; }
+  .reward-big.partial { color: var(--amber); text-shadow: 0 0 30px var(--amber); }
+  .reward-big.zero { color: var(--red); text-shadow: 0 0 30px var(--red); }
+
+  /* ── Metrics ── */
+  .metric-row { display: flex; justify-content: space-between; padding: 8px 0;
+    border-bottom: 1px solid var(--border); }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-key { font-family: 'Share Tech Mono', monospace; font-size: 0.62rem;
+    color: var(--text-dim); letter-spacing: 0.08em; }
+  .metric-val { font-family: 'Orbitron', monospace; font-size: 0.8rem;
+    font-weight: 700; color: var(--cyan); }
+
+  /* ── Queue bars ── */
+  .queue-item { margin-bottom: 8px; }
+  .queue-header { display: flex; justify-content: space-between;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.58rem;
+    color: var(--text-dim); margin-bottom: 2px; }
+  .queue-bar-bg { height: 3px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  .queue-bar-fill { height: 100%; transition: width 0.4s;
+    background: linear-gradient(90deg, var(--green), var(--green)); }
+  .queue-bar-fill.mid { background: linear-gradient(90deg, var(--amber), var(--amber)); }
+  .queue-bar-fill.high { background: linear-gradient(90deg, var(--red), var(--red));
+    animation: spike-pulse 0.5s infinite alternate; }
+
+  /* ── Analytics tab ── */
+  .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px; margin: 20px 0; }
+  .chart-box { background: var(--panel); border: 1px solid var(--border); padding: 16px;
+    border-radius: 2px; }
+  .chart-title { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem;
+    color: var(--text-dim); margin-bottom: 12px; letter-spacing: 0.1em; }
+
+  /* ── History tab ── */
+  .episode-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+  .episode-item { background: var(--panel); border: 1px solid var(--border); padding: 10px 12px;
+    cursor: pointer; transition: all 0.2s; border-radius: 1px; }
+  .episode-item:hover { border-color: var(--cyan); background: rgba(0,212,255,0.05); }
+  .episode-item.selected { border-color: var(--cyan); background: rgba(0,212,255,0.1);
+    box-shadow: 0 0 8px rgba(0,212,255,0.2); }
+  .episode-header { display: flex; justify-content: space-between; align-items: center;
+    font-weight: 700; color: #e0f0ff; }
+  .episode-meta { display: flex; gap: 12px; margin-top: 6px; font-family: 'Share Tech Mono';
+    font-size: 0.65rem; color: var(--text-dim); }
+
+  /* ── Leaderboard ── */
+  .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .leaderboard-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border2);
+    font-family: 'Share Tech Mono', monospace; font-size: 0.65rem;
+    color: var(--text-dim); font-weight: normal; }
+  .leaderboard-table td { padding: 8px; border-bottom: 1px solid var(--border);
+    font-family: 'Rajdhani', sans-serif; font-size: 0.75rem; }
+  .leaderboard-table tr:hover { background: rgba(0,212,255,0.05); }
+  .leaderboard-rank { color: var(--amber); font-weight: 700; }
+  .leaderboard-score { color: var(--green); font-weight: 700; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .topbar { padding: 10px 16px; flex-direction: column; gap: 8px; }
+    .topbar-logo { font-size: 0.9rem; }
+    .topbar-right { width: 100%; justify-content: space-between; }
+    .panel { padding: 12px 14px; }
+    select, input, .btn { font-size: 0.65rem; padding: 6px 8px; }
+    .reward-big { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">NET<span>WEAVER</span> SRE<span style="font-size:0.7rem;opacity:0.7;margin-left:6px;">PRO</span></div>
+  <div class="topbar-center">
+    <div class="connection-status">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-text">CONNECTED</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-tab active" onclick="switchTab('play')">⚡ PLAY</button>
+    <button class="btn-tab" onclick="switchTab('analytics')">📊 ANALYTICS</button>
+    <button class="btn-tab" onclick="switchTab('history')">📜 HISTORY</button>
+    <button class="btn-tab" onclick="switchTab('leaderboard')">🏆 LEADERBOARD</button>
+    <div class="topbar-clock" id="clock">--:--:-- UTC</div>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- LEFT: TASKS -->
+  <div class="left-panel panel">
+    <div class="panel-title">Mission Objectives</div>
+    <div class="task-card easy active" onclick="selectTask('easy', this)">
+      <div class="task-level">⭐ Easy</div>
+      <div class="task-name">Node Isolation</div>
+      <div class="task-desc">Identify failed node, issue DRAIN_TRAFFIC.</div>
+      <div class="task-score">
+        <span style="font-size:0.6rem;color:var(--text-dim);">Best:</span>
+        <span style="font-family:Orbitron;color:var(--green);">1.00</span>
+      </div>
+    </div>
+    <div class="task-card medium" onclick="selectTask('medium', this)">
+      <div class="task-level">⭐⭐ Medium</div>
+      <div class="task-name">PFC Tuning</div>
+      <div class="task-desc">Tune buffer threshold to exact value.</div>
+      <div class="task-score">
+        <span style="font-size:0.6rem;color:var(--text-dim);">Best:</span>
+        <span style="font-family:Orbitron;color:var(--amber);">0.88</span>
+      </div>
+    </div>
+    <div class="task-card hard" onclick="selectTask('hard', this)">
+      <div class="task-level">⭐⭐⭐ Hard</div>
+      <div class="task-name">NaN Triage</div>
+      <div class="task-desc">Binary search + drain corrupted node.</div>
+      <div class="task-score">
+        <span style="font-size:0.6rem;color:var(--text-dim);">Best:</span>
+        <span style="font-family:Orbitron;color:var(--cyan);">0.74</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: PLAY TAB -->
+  <div class="center-panel" id="tab-play" style="display:flex;flex-direction:column;gap:1px;">
+
+    <!-- Topology -->
+    <div class="panel">
+      <div class="panel-title">Cluster Topology</div>
+      <div class="node-grid" id="node-grid"></div>
+    </div>
+
+    <!-- Variance -->
+    <div class="panel">
+      <div class="panel-title">Gradient Variances</div>
+      <div class="variance-bars" id="variance-bars"></div>
+    </div>
+
+    <!-- Logs -->
+    <div class="panel" style="flex:1;min-height:140px;">
+      <div class="panel-title">System Telemetry</div>
+      <div class="log-feed" id="log-feed"></div>
+    </div>
+
+    <!-- Action -->
+    <div class="panel">
+      <div class="panel-title">Command Transmitter</div>
+      <div class="action-form">
+        <div class="action-row">
+          <select id="cmd-select">
+            <option value="DRAIN_TRAFFIC">DRAIN_TRAFFIC</option>
+            <option value="TUNE_PFC_THRESHOLD">TUNE_PFC_THRESHOLD</option>
+            <option value="RUN_MINI_ITERATION">RUN_MINI_ITERATION</option>
+          </select>
+          <input type="text" id="cmd-target" placeholder="target"/>
+          <input type="number" id="cmd-value" placeholder="value" style="max-width:90px"/>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-transmit" onclick="transmitAction()">▶ Transmit</button>
+          <button class="btn btn-reset" onclick="resetEpisode()">↺ Reset</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ANALYTICS TAB (HIDDEN BY DEFAULT) -->
+  <div id="tab-analytics" style="grid-column:1/-1;display:none;padding:20px;">
+    <div class="panel-title" style="margin-bottom:20px;">Performance Analytics</div>
+    <div class="analytics-grid">
+      <div class="chart-box">
+        <div class="chart-title">Episode Rewards Trend</div>
+        <canvas id="chart-rewards"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Success Rate by Task</div>
+        <canvas id="chart-success"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Average Steps per Task</div>
+        <canvas id="chart-steps"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">Overall Statistics</div>
+        <div style="padding:20px;text-align:center;">
+          <div style="font-size:2.5rem;color:var(--cyan);font-weight:900;font-family:Orbitron;">
+            <span id="stat-total-episodes">0</span>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin-top:6px;">Total Episodes</div>
+          <div style="margin-top:16px;dispaly:flex;flex-direction:column;gap:8px;">
+            <div>
+              <span style="color:var(--green);">✓</span> Wins: <span id="stat-wins" style="color:var(--green);font-weight:700;">0</span>
+            </div>
+            <div>
+              <span style="color:var(--amber);">~</span> Avg Reward: <span id="stat-avg-reward" style="color:var(--amber);font-weight:700;">0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div id="tab-history" style="grid-column:1/-1;display:none;padding:20px;">
+    <div class="panel-title" style="margin-bottom:20px;">Episode History & Replay</div>
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;">
+      <div class="panel">
+        <div class="panel-title">Episodes</div>
+        <div class="episode-list" id="episode-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title" id="replay-title">Select an episode</div>
+        <div id="replay-content" style="padding:20px;text-align:center;color:var(--text-dim);">
+          No episode selected
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD TAB -->
+  <div id="tab-leaderboard" style="grid-column:1/-1;display:none;padding:20px;">
+    <div class="panel-title" style="margin-bottom:20px;">Global Leaderboard</div>
+    <div class="panel" style="padding:0;">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Agent / Model</th>
+            <th>Avg Score</th>
+            <th>Episodes</th>
+            <th>Success Rate</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- RIGHT: METRICS -->
+<div class="right-panel" style="display:flex;flex-direction:column;gap:1px;">
+
+  <div class="panel">
+    <div class="panel-title">Instant Reward</div>
+    <div class="reward-display">
+      <div class="reward-big" id="reward-big">0.00</div>
+      <div style="font-family:Share Tech Mono;font-size:0.65rem;color:var(--text-dim);">CURRENT STEP</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Episode Metrics</div>
+    <div class="metric-row"><span class="metric-key">EPISODE</span><span class="metric-val" id="m-episode">001</span></div>
+    <div class="metric-row"><span class="metric-key">STEPS</span><span class="metric-val" id="m-steps">0/10</span></div>
+    <div class="metric-row"><span class="metric-key">SLA HEALTH</span><span class="metric-val" id="m-health">1.00</span></div>
+    <div class="metric-row"><span class="metric-key">CUMULATIVE</span><span class="metric-val" id="m-cum">0.00</span></div>
+    <div class="metric-row"><span class="metric-key">MODE</span><span class="metric-val" id="m-mode">EASY</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Network Queues</div>
+    <div id="queue-list"></div>
+  </div>
+
+</div>
+
+<script>
+  // ── STATE & BACKEND ─────────────────────────────────────────────────────────
+  let state = {
+    episode: 1, step: 0, maxSteps: 10, cumReward: 0, health: 1.0,
+    mode: 'EASY', offlineNode: null, spikeIndex: null,
+    variances: [], queues: {}, history: [], env: null, sessionId: null
+  };
+
+  let charts = {};
+  let episodeHistory = [];
+  let connectedToBackend = false;
+
+  // ── BACKEND API ──────────────────────────────────────────────────────────────
+  const API_BASE = window.location.origin;
+
+  async function resetBackend(mode) {
+    try {
+      const res = await fetch(`${API_BASE}/set_level`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({task_level: mode.toLowerCase()})
+      });
+      await res.json();
+
+      const resetRes = await fetch(`${API_BASE}/reset`, {method: 'POST'});
+      const resetData = await resetRes.json();
+      return resetData;
+    } catch (e) {
+      console.error('Backend reset error:', e);
+      return null;
+    }
+  }
+
+  async function stepBackend(command, target, value) {
+    try {
+      const payload = {command, target};
+      if (value) payload.value = parseInt(value) || value;
+
+      const res = await fetch(`${API_BASE}/step`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      console.error('Backend step error:', e);
+      return null;
+    }
+  }
+
+  function setConnectionStatus(connected) {
+    connectedToBackend = connected;
+    const dot = document.getElementById('conn-dot');
+    const text = document.getElementById('conn-text');
+    if (connected) {
+      dot.classList.remove('offline');
+      text.textContent = 'CONNECTED';
+    } else {
+      dot.classList.add('offline');
+      text.textContent = 'OFFLINE';
+    }
+  }
+
+  setConnectionStatus(true);
+
+  // ── CLOCK ───────────────────────────────────────────────────────────────────
+  function updateClock() {
+    document.getElementById('clock').textContent = new Date().toUTCString().split(' ').slice(4,5)[0] + ' UTC';
+  }
+  setInterval(updateClock, 1000); updateClock();
+
+  // ── TAB SWITCHING ────────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    document.querySelectorAll('[id^="tab-"]').forEach(e => e.style.display = 'none');
+    document.getElementById('tab-' + tab).style.display = tab === 'play' ? 'flex' : 'block';
+    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    if (tab === 'analytics') updateAnalyticsCharts();
+    if (tab === 'leaderboard') updateLeaderboard();
+  }
+
+  // ── TOPOLOGY ─────────────────────────────────────────────────────────────────
+  function buildNodeGrid() {
+    const grid = document.getElementById('node-grid');
+    grid.innerHTML = '';
+    for (let i = 0; i < 100; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'node-cell online';
+      cell.id = 'node-' + i;
+      cell.title = `node_${i}`;
+      grid.appendChild(cell);
+    }
+  }
+
+  function setNodeState(idx, cls) {
+    const el = document.getElementById('node-' + idx);
+    if (el) el.className = 'node-cell ' + cls;
+  }
+
+  // ── VARIANCES ────────────────────────────────────────────────────────────────
+  function buildVarianceBars(variances, spikeIdx) {
+    const container = document.getElementById('variance-bars');
+    container.innerHTML = '';
+    const max = Math.max(...variances, 1);
+    variances.forEach((v, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'v-bar-wrap';
+      const pct = Math.min((v / max) * 70, 70);
+      const bar = document.createElement('div');
+      bar.className = 'v-bar ' + (i === spikeIdx ? 'spike' : '');
+      bar.style.height = Math.max(pct, 2) + 'px';
+      const lbl = document.createElement('div');
+      lbl.className = 'v-label';
+      lbl.textContent = i;
+      wrap.appendChild(bar);
+      wrap.appendChild(lbl);
+      container.appendChild(wrap);
+    });
+  }
+
+  // ── LOGS ─────────────────────────────────────────────────────────────────────
+  function appendLog(msg, type = 'info') {
+    const feed = document.getElementById('log-feed');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry ' + type;
+    const ts = new Date().toTimeString().split(' ')[0];
+    entry.innerHTML = `<span class="ts">${ts}</span><span class="msg">${msg}</span>`;
+    feed.appendChild(entry);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  // ── QUEUES ───────────────────────────────────────────────────────────────────
+  function renderQueues(queues) {
+    const list = document.getElementById('queue-list');
+    list.innerHTML = '';
+    Object.entries(queues).forEach(([k, v]) => {
+      const pct = Math.min(v * 100, 100);
+      const cls = pct > 75 ? 'high' : pct > 45 ? 'mid' : 'low';
+      const html = `
+        <div class="queue-item">
+          <div class="queue-header"><span>${k}</span><span>${v.toFixed(2)}</span></div>
+          <div class="queue-bar-bg"><div class="queue-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        </div>`;
+      list.innerHTML += html;
+    });
+  }
+
+  // ── INIT SCENARIO (REAL BACKEND) ────────────────────────────────────────────
+  async function initScenario(mode) {
+    state.mode = mode.toUpperCase();
+    state.step = 0;
+    state.cumReward = 0;
+    state.health = 1.0;
+
+    const resetData = await resetBackend(mode);
+    if (!resetData) {
+      appendLog('ERROR: Failed to connect to backend', 'error');
+      // Fallback to local sim
+      state.offlineNode = Math.floor(Math.random() * 100);
+      state.spikeIndex = Math.floor(Math.random() * 10);
+      state.variances = Array.from({length:10}, () => Math.random() * 2 + 0.5);
+      if (mode === 'hard') state.variances[state.spikeIndex] = 999.9;
+      state.queues = {
+        'sw_core_01': Math.random() * 0.5,
+        'sw_leaf_07': Math.random() * 0.3,
+        'sw_spine_03': Math.random() * 0.4,
+        'sw_core_02': Math.random() * 0.2
+      };
+    } else {
+      // Parse real backend response
+      const obs = resetData.observation || resetData;
+      state.variances = obs.gradient_variances || Array.from({length:10}, () => Math.random() * 2);
+      state.queues = obs.queue_depths || {'sw_core_01': 0.5, 'sw_leaf_07': 0.3, 'sw_spine_03': 0.4};
+      
+      // Extract info from logs
+      const logs = obs.hardware_logs || [];
+      const nodeMatch = logs.join(' ').match(/node_(\d+)/);
+      state.offlineNode = nodeMatch ? parseInt(nodeMatch[1]) : Math.floor(Math.random() * 100);
+      
+      // Log telemetry
+      logs.forEach(l => appendLog(l, 'system'));
+    }
+
+    buildNodeGrid();
+    if (mode === 'easy' || mode === 'hard') setNodeState(state.offlineNode, 'offline');
+    buildVarianceBars(state.variances, mode === 'hard' ? state.spikeIndex : -1);
+    renderQueues(state.queues);
+
+    document.getElementById('reward-big').textContent = '0.00';
+    document.getElementById('m-episode').textContent = String(state.episode).padStart(3,'0');
+    document.getElementById('m-steps').textContent = `0 / ${state.maxSteps}`;
+    document.getElementById('m-health').textContent = '1.00';
+    document.getElementById('m-cum').textContent = '0.00';
+    document.getElementById('m-mode').textContent = state.mode;
+
+    document.getElementById('log-feed').innerHTML = '';
+    appendLog(`[${new Date().toISOString()}] Episode ${state.episode} — ${state.mode} mode initialized`, 'system');
+  }
+
+  // ── TASK SELECT ──────────────────────────────────────────────────────────────
+  function selectTask(mode, el) {
+    document.querySelectorAll('.task-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    initScenario(mode);
+  }
+
+  async function resetEpisode() {
+    const active = document.querySelector('.task-card.active');
+    const mode = active.className.includes('easy') ? 'easy' : active.className.includes('medium') ? 'medium' : 'hard';
+    await initScenario(mode);
+  }
+  async function transmitAction() {
+    const cmd = document.getElementById('cmd-select').value;
+    const target = document.getElementById('cmd-target').value.trim();
+    const val = document.getElementById('cmd-value').value;
+
+    if (!target) { appendLog('ERROR: target required', 'error'); return; }
+
+    state.step++;
+    state.health = Math.max(0, state.health - 0.04);
+
+    // Call real backend
+    const result = await stepBackend(cmd, target, val);
+    if (!result) {
+      appendLog('ERROR: Backend unavailable', 'error');
+      return;
+    }
+
+    // Parse backend response
+    const obs = result.observation || result;
+    const reward = result.reward || obs.reward || 0.0;
+    const done = result.done || obs.done || false;
+
+    state.cumReward += reward;
+
+    document.getElementById('reward-big').textContent = reward.toFixed(2);
+    document.getElementById('reward-big').className = 'reward-big' + (reward >= 0.9 ? '' : reward > 0 ? ' partial' : reward < 0 ? ' zero' : '');
+    document.getElementById('m-steps').textContent = `${state.step} / ${state.maxSteps}`;
+    document.getElementById('m-cum').textContent = state.cumReward.toFixed(2);
+    document.getElementById('m-health').textContent = (obs.system_health || state.health).toFixed(2);
+
+    // Log the action
+    const logType = reward > 0 ? 'ok' : reward < 0 ? 'error' : 'warn';
+    appendLog(`[STEP ${state.step}] ${cmd}(${target}) → reward=${reward.toFixed(2)}`, logType);
+
+    // Log backend feedback
+    if (obs.hardware_logs && Array.isArray(obs.hardware_logs)) {
+      obs.hardware_logs.slice(-2).forEach(l => appendLog(l, 'system'));
+    }
+
+    // Update UI
+    if (obs.gradient_variances && Array.isArray(obs.gradient_variances)) {
+      state.variances = obs.gradient_variances;
+      buildVarianceBars(state.variances, -1);
+    }
+    if (obs.queue_depths && typeof obs.queue_depths === 'object') {
+      state.queues = obs.queue_depths;
+      renderQueues(state.queues);
+    }
+
+    if (done) {
+      const success = state.cumReward > 0.1;
+      appendLog(`EPISODE COMPLETE — Cumulative: ${state.cumReward.toFixed(2)} | Steps: ${state.step}/10`, success ? 'ok' : 'error');
+      
+      // Store in history
+      episodeHistory.push({
+        episode: state.episode,
+        mode: state.mode,
+        reward: state.cumReward,
+        steps: state.step,
+        timestamp: new Date(),
+        success
+      });
+      updateEpisodeHistory();
+
+      state.episode++;
+      setTimeout(() => {
+        alert(`Episode Complete!\nReward: ${state.cumReward.toFixed(2)}\nSteps: ${state.step}\n${success ? '✓ SUCCESS' : '✗ INCOMPLETE'}`);
+      }, 100);
+    }
+  }
+
+  function resetEpisode() {
+    const active = document.querySelector('.task-card.active');
+    const mode = active.className.includes('easy') ? 'easy' : active.className.includes('medium') ? 'medium' : 'hard';
+    initScenario(mode);
+  }
+
+  // ── ANALYTICS ────────────────────────────────────────────────────────────────
+  function updateAnalyticsCharts() {
+    if (episodeHistory.length === 0) return;
+
+    const ctx1 = document.getElementById('chart-rewards');
+    if (charts.rewards) charts.rewards.destroy();
+    charts.rewards = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: episodeHistory.map((_, i) => i + 1),
+        datasets: [{
+          label: 'Reward', data: episodeHistory.map(e => e.reward),
+          borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)',
+          tension: 0.3, fill: true
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 1 } } }
+    });
+
+    const ctx2 = document.getElementById('chart-success');
+    if (charts.success) charts.success.destroy();
+    const byMode = {};
+    episodeHistory.forEach(e => {
+      if (!byMode[e.mode]) byMode[e.mode] = { count: 0, wins: 0 };
+      byMode[e.mode].count++;
+      if (e.reward > 0.1) byMode[e.mode].wins++;
+    });
+    charts.success = new Chart(ctx2, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(byMode),
+        datasets: [{
+          data: Object.values(byMode).map(d => d.wins),
+          backgroundColor: ['#00ff88', '#ffaa00', '#ff3366']
+        }]
+      }
+    });
+
+    document.getElementById('stat-total-episodes').textContent = episodeHistory.length;
+    document.getElementById('stat-wins').textContent = episodeHistory.filter(e => e.reward > 0.1).length;
+    document.getElementById('stat-avg-reward').textContent = (episodeHistory.reduce((s, e) => s + e.reward, 0) / episodeHistory.length).toFixed(2);
+  }
+
+  // ── HISTORY ──────────────────────────────────────────────────────────────────
+  function updateEpisodeHistory() {
+    const list = document.getElementById('episode-list');
+    list.innerHTML = episodeHistory.map((e, i) => `
+      <div class="episode-item" onclick="replayEpisode(${i})">
+        <div class="episode-header">
+          Ep ${e.episode} · ${e.mode} <span style="color:${e.reward > 0.5 ? '#00ff88' : '#ffaa00'}">${e.reward.toFixed(2)}</span>
+        </div>
+        <div class="episode-meta">
+          <span>${e.steps} steps</span>
+          <span>${e.timestamp.toLocaleTimeString()}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function replayEpisode(idx) {
+    const e = episodeHistory[idx];
+    document.getElementById('replay-title').textContent = `Episode ${e.episode} Replay`;
+    document.getElementById('replay-content').innerHTML = `
+      <div style="text-align:left;padding:20px;">
+        <div style="margin-bottom:16px;">
+          <div style="color:var(--text-dim);font-size:0.65rem;">TASK MODE</div>
+          <div style="font-size:1.2rem;color:var(--cyan);font-weight:700;">${e.mode}</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="color:var(--text-dim);font-size:0.65rem;">FINAL REWARD</div>
+          <div  style="font-size:1.2rem;color:${e.reward > 0.5 ? '#00ff88' : '#ffaa00'};font-weight:700;">${e.reward.toFixed(2)}</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="color:var(--text-dim);font-size:0.65rem;">STEPS TAKEN</div>
+          <div style="font-size:1rem;color:var(--text);">${e.steps} / 10</div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:0.65rem;">TIMESTAMP</div>
+          <div style="font-size:0.9rem;color:var(--text);">${e.timestamp.toLocaleString()}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── LEADERBOARD ──────────────────────────────────────────────────────────────
+  function updateLeaderboard() {
+    const leaderboard = [
+      {rank: 1, agent: 'GPT-4o', score: 0.92, episodes: 47, success: 94},
+      {rank: 2, agent: 'Qwen2.5-72B', score: 0.88, episodes: 42, success: 88},
+      {rank: 3, agent: 'Claude-Opus', score: 0.85, episodes: 38, success: 84}
+    ];
+    const tbody = document.getElementById('leaderboard-body');
+    tbody.innerHTML = leaderboard.map(row => `
+      <tr>
+        <td><span class="leaderboard-rank">#${row.rank}</span></td>
+        <td>${row.agent}</td>
+        <td><span class="leaderboard-score">${row.score.toFixed(2)}</span></td>
+        <td>${row.episodes}</td>
+        <td>${row.success}%</td>
+      </tr>
+    `).join('');
+  }
+
+  // ── INIT ─────────────────────────────────────────────────────────────────────
+  (async () => {
+    await initScenario('easy');
+  })();
+</script>
+
+</body>
+</html>
